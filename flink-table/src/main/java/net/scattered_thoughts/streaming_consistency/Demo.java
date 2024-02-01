@@ -1,16 +1,10 @@
 package net.scattered_thoughts.streaming_consistency;
 
-import org.apache.flink.streaming.api.datastream.DataStream;
+import org.apache.flink.configuration.Configuration;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.table.api.bridge.java.StreamTableEnvironment;
 import org.apache.flink.table.api.*;
-import org.apache.flink.table.expressions.*;
-import org.apache.flink.table.functions.ScalarFunction;
-import static org.apache.flink.table.api.Expressions.*;
-import org.apache.flink.api.java.typeutils.*;
-import org.apache.flink.api.java.tuple.*;
 import org.apache.flink.types.*;
-import java.sql.Timestamp;
 import java.util.Properties;
 import org.apache.flink.streaming.connectors.kafka.*;
 import org.apache.flink.api.common.serialization.*;
@@ -18,8 +12,15 @@ import org.apache.flink.api.common.serialization.*;
 public class Demo {
 
     public static void main(String[] args) throws Exception {
+        Configuration config = new Configuration();
+        // needed for perf reasons
+        config.setString("taskmanager.memory.network.max", "1gb");
+        config.setString("rest.port", "8888");
+        // NOTE: this is needed to get to the eventual consistency!
+        config.setString("parallelism.default", "1");
+
         EnvironmentSettings settings = EnvironmentSettings.newInstance().useBlinkPlanner().inStreamingMode().build();
-        StreamExecutionEnvironment sEnv = StreamExecutionEnvironment.getExecutionEnvironment();
+        StreamExecutionEnvironment sEnv = StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(config);
         StreamTableEnvironment tEnv = StreamTableEnvironment.create(sEnv, settings);
 
         tEnv.executeSql(String.join("\n",
@@ -115,46 +116,7 @@ public class Demo {
             "    balance"
         ));
         sinkToKafka(tEnv, "total");
-        
-        tEnv.executeSql(String.join("\n",
-            "CREATE VIEW credits2(account, credits, ts) AS",
-            "SELECT",
-            "    to_account as account, sum(amount) as credits, max(ts) as ts",
-            "FROM",
-            "    transactions",
-            "GROUP BY",
-            "    to_account"
-        ));  
-        sinkToKafka(tEnv, "credits2");
-        tEnv.executeSql(String.join("\n",
-            "CREATE VIEW debits2(account, debits, ts) AS",
-            "SELECT",
-            "    from_account as account, sum(amount) as debits, max(ts) as ts",
-            "FROM",
-            "    transactions",
-            "GROUP BY",
-            "    from_account"
-        ));
-        sinkToKafka(tEnv, "debits2");
-        tEnv.executeSql(String.join("\n",
-            "CREATE VIEW balance2(account, balance, ts) AS",
-            "SELECT",
-            "    credits2.account, credits - debits as balance, credits2.ts",
-            "FROM",
-            "    credits2, debits2",
-            "WHERE",
-            "    credits2.account = debits2.account AND credits2.ts = debits2.ts"
-        ));
-        sinkToKafka(tEnv, "balance2");
-        tEnv.executeSql(String.join("\n",
-            "CREATE VIEW total2(total) AS",
-            "SELECT",
-            "    sum(balance)",
-            "FROM",
-            "    balance2"
-        ));
-        sinkToKafka(tEnv, "total2");
-        
+
         sEnv.execute("Demo");
     }
     
