@@ -16,6 +16,9 @@ public class Demo {
 		Configuration config = new Configuration();
 		config.setString("rest.port", "8888");
 		config.setString("taskmanager.memory.network.max", "1gb");
+		config.setString("execution.checkpointing.interval", "15 seconds");
+		// NOTE: this is needed to get to the eventual consistency!
+		config.setString("parallelism.default", "1");
 
 		EnvironmentSettings settings = EnvironmentSettings.inStreamingMode();
 		StreamExecutionEnvironment sEnv = StreamExecutionEnvironment.createLocalEnvironmentWithWebUI(config);
@@ -126,7 +129,8 @@ public class Demo {
 						.setValueSerializationSchema(new SimpleStringSchema())
 						.build()
 				)
-				.setDeliveryGuarantee(DeliveryGuarantee.AT_LEAST_ONCE) // TODO: try to use EXACTLY_ONCE
+				.setDeliveryGuarantee(DeliveryGuarantee.EXACTLY_ONCE)
+				.setTransactionalIdPrefix(name + "-" + System.currentTimeMillis() + "-")
 				.build();
 
 		tEnv
